@@ -74,7 +74,7 @@ class QAngarooBatcher(object):
     self._enc_vocab = enc_vocab
     self._type_vocab = type_vocab
     self._hps = hps
-    self._bucketing = bucketing  # not used
+    self._bucketing = bucketing  # deprecated
     self._truncate_input = truncate_input
     assert self._truncate_input == True, 'truncate=False not implemented.'
 
@@ -217,6 +217,7 @@ class QAngarooBatcher(object):
     while True:
       if num_epochs is not None and epoch >= num_epochs:
         return
+
       if self._shuffle_batches:
         shuffle(dataset)
 

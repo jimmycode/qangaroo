@@ -10,8 +10,8 @@ python run.py \
   --summary_dir=log/hhn//ex02 \
   --mode=train \
   --batch_size 16 \
-  --lr 0.001 \
-  --min_lr 0.0001 \
+  --lr 0.000001 \
+  --min_lr 0.0000001 \
   --max_grad_norm 2.0 \
   --decay_step 10000 \
   --decay_rate 0.9 \
@@ -30,7 +30,7 @@ python run.py \
   --max_num_doc 64 \
   --max_doc_len 300 \
   --max_entity_len 10 \
-  --max_num_cands 70 \
+  --max_num_cands 80 \
   --word_conv_filter 128 \
   --word_conv_width 3 \
   --hop_net_rnn_layers 1 \

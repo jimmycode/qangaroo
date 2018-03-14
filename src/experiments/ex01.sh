@@ -1,4 +1,4 @@
-export CUDA_VISIBLE_DEVICES=3
+export CUDA_VISIBLE_DEVICES=4
 python run.py \
   --model=hhn \
   --data_path=data/wikihop/train.json.proc \
@@ -30,7 +30,7 @@ python run.py \
   --max_num_doc 64 \
   --max_doc_len 300 \
   --max_entity_len 10 \
-  --max_num_cands 70 \
+  --max_num_cands 80 \
   --word_conv_filter 128 \
   --word_conv_width 3 \
   --hop_net_rnn_layers 1 \

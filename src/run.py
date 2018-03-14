@@ -57,7 +57,7 @@ tf.app.flags.DEFINE_integer("max_doc_len", 300,
                             "Maximum number of words in a document.")
 tf.app.flags.DEFINE_integer("max_entity_len", 10,
                             "Maximum number of tokens in an entity.")
-tf.app.flags.DEFINE_integer("max_num_cands", 70,
+tf.app.flags.DEFINE_integer("max_num_cands", 80,
                             "Maximum number of candidates.")
 tf.app.flags.DEFINE_integer("word_conv_filter", 128, "Number of CNN filters.")
 tf.app.flags.DEFINE_integer("word_conv_width", 3, "Width of CNN kernel.")

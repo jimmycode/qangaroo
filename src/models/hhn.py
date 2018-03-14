@@ -394,7 +394,7 @@ class HierHopNet(object):
           zip(grads, tvars), global_step=self.global_step, name="train_step")
 
   def run_train_step(self, sess, batch):
-    pdb.set_trace()
+    # pdb.set_trace()
     (doc_batch, doc_lens_batch, num_doc_batch, q_type_ids, q_subject_batch,
      q_subject_lens, candidates_batch, cand_lens_batch, num_cand_batch,
      answer_idxs, others) = batch
@@ -422,7 +422,7 @@ class HierHopNet(object):
     return results[1:]
 
   def run_eval_step(self, sess, batch):
-    pdb.set_trace()
+    # pdb.set_trace()
     (doc_batch, doc_lens_batch, num_doc_batch, q_type_ids, q_subject_batch,
      q_subject_lens, candidates_batch, cand_lens_batch, num_cand_batch,
      answer_idxs, others) = batch

@@ -1,0 +1,8 @@
+*.pyc
+.ropeproject
+src/data
+src/checkpoints
+src/log
+src/out
+src/archive*
+etc

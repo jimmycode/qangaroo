@@ -97,13 +97,13 @@ class QAngarooBatcher(object):
       self._bucketing_threads[-1].daemon = True
       self._bucketing_threads[-1].start()
 
-    # Create watch threads
-    if self._hps.mode == 'train':
-      # Keep input threads running in train mode,
-      # but they are not needed in eval and decode mode.
-      self._watch_thread = Thread(target=self._WatchThreads)
-      self._watch_thread.daemon = True
-      self._watch_thread.start()
+    # # Create watch threads
+    # if self._hps.mode == 'train':
+    #   # Keep input threads running in train mode,
+    #   # but they are not needed in eval and decode mode.
+    #   self._watch_thread = Thread(target=self._WatchThreads)
+    #   self._watch_thread.daemon = True
+    #   self._watch_thread.start()
 
   def __iter__(self):
     return self
@@ -128,7 +128,7 @@ class QAngarooBatcher(object):
     type_vocab = self._type_vocab
 
     enc_pad_id = enc_vocab.pad_id
-    enc_empty_doc = [enc_pad_id] * hps.max_doc_len
+    empty_doc = [enc_pad_id] * hps.max_doc_len
     empty_cand = [enc_pad_id] * hps.max_entity_len
 
     data_generator = self._DataGenerator(data_path, self._num_epochs)
@@ -154,13 +154,13 @@ class QAngarooBatcher(object):
           s + [enc_pad_id] * (hps.max_doc_len - l)
           for s, l in zip(trunc_enc_input, enc_doc_lens)
       ]
-      padded_enc_input += [enc_empty_doc] * (hps.max_num_doc - enc_num_doc)
+      padded_enc_input += [empty_doc] * (hps.max_num_doc - enc_num_doc)
       np_enc_input = np.array(
           padded_enc_input, dtype=np.int32)  # [max_num_doc x max_doc_len]
 
       # Pad the lengths
       pad_doc_lens = enc_doc_lens + [0] * (hps.max_num_doc - enc_num_doc)
-      np_doc_lens = np.array(pad_doc_lens, dtype=np.int32)
+      np_doc_lens = np.array(pad_doc_lens, dtype=np.int32)  # [max_num_doc]
 
       # Get query type
       type_id = type_vocab.WordToId(data_sample['query_type'])
@@ -173,7 +173,7 @@ class QAngarooBatcher(object):
 
       padded_sub = subject_ids + [enc_pad_id] * (
           hps.max_entity_len - subject_len)
-      np_subject = np.array(padded_sub, dtype=np.int32)
+      np_subject = np.array(padded_sub, dtype=np.int32)  # [max_entity_len]
 
       # Get candidates
       candidates = data_sample['candidates']
@@ -193,10 +193,12 @@ class QAngarooBatcher(object):
           for c, l in zip(trunc_cand_ids, cand_lens)
       ]
       padded_cands += [empty_cand] * (hps.max_num_cands - num_cands)
-      np_cands = np.array(padded_cands, dtype=np.int32)
+      np_cands = np.array(
+          padded_cands, dtype=np.int32)  # [max_num_cands, max_entity_len]
 
       padded_cand_lens = cand_lens + [0] * (hps.max_num_cands - num_cands)
-      np_cand_lens = np.array(padded_cand_lens, dtype=np.int32)
+      np_cand_lens = np.array(
+          padded_cand_lens, dtype=np.int32)  # [max_num_cands]
 
       # Get the answer
       answer_idx = data_sample['answer_index']

@@ -116,7 +116,7 @@ class HierHopNet(object):
     # Candidate-related
     self._candidates = tf.placeholder(
         tf.int32, [hps.batch_size, hps.max_num_cands, hps.max_entity_len],
-        name="candidates")
+        name="candidates")  # [B, C, EL]
     self._cand_lens = tf.placeholder(
         tf.int32, [hps.batch_size, hps.max_num_cands], name="cand_lens")
     self._num_cand = tf.placeholder(tf.int32, [hps.batch_size], name="num_cand")
@@ -187,6 +187,14 @@ class HierHopNet(object):
         # Use the same CNN to model query subject
         emb_subject = tf.nn.embedding_lookup(self._input_embed,
                                              self._query_subject)  # [B, EL, D]
+        # Mask the subject and calculate mean-pooled representation
+        subject_lens = self._query_sub_lens  # [B]
+        subject_mask = tf.expand_dims(
+            tf.sequence_mask(
+                subject_lens, maxlen=hps.max_entity_len, dtype=tf.float32),
+            2)  # [B, EL, 1]
+        emb_subject *= subject_mask
+
         subject_conv = tf.layers.conv1d(
             emb_subject,
             hps.word_conv_filter,
@@ -194,14 +202,6 @@ class HierHopNet(object):
             padding="same",
             name="docs_conv",
             reuse=True)  # [B, EL, F]
-
-        # Mask the subject and calculate mean-pooled representation
-        subject_lens = self._query_sub_lens
-        subject_mask = tf.expand_dims(
-            tf.sequence_mask(
-                subject_lens, maxlen=hps.max_entity_len, dtype=tf.float32),
-            2)  # [B, EL, 1]
-        subject_conv *= subject_mask  # apply mask, [B, EL, F]
 
         mean_subject = tf.reduce_sum(subject_conv, 1) / tf.expand_dims(
             tf.to_float(subject_lens) + 1e-3, 1)  # [B, F]
@@ -268,7 +268,10 @@ class HierHopNet(object):
                                           2)  # [B, 1, 1, F]
         select_att_logit = tf.reduce_sum(mapped_docs_rsp * mean_subject_rsp,
                                          3)  # [B, N, L]
-        select_att_softmax = tf.nn.softmax(select_att_logit)  # [B, N, L]
+        select_att_masks = tf.reshape(
+            word_masks, [-1, hps.max_num_doc, hps.max_doc_len])  # [B, N, L]
+        select_att_softmax = lib.masked_softmax(
+            select_att_logit, select_att_masks, axis=-1)  # [B, N, L]
 
       with tf.variable_scope("hop_net",
           initializer=tf.random_uniform_initializer(-0.1, 0.1)), \
@@ -276,15 +279,15 @@ class HierHopNet(object):
         # Concat the query into document modeling in HopNet RNN
         query_concat = tf.concat([mean_subject, emb_query_type], 1)  # [B, TD+F]
         query_rsp = tf.expand_dims(tf.expand_dims(query_concat, 1),
-                                   2)  # [B, 1, 1, D+F]
+                                   2)  # [B, 1, 1, TD+F]
         query_tiled = tf.tile(
-            query_rsp, [1, hps.max_num_doc, hps.max_doc_len, 1])  #[B,N,L,TD+F]
+            query_rsp, [1, hps.max_num_doc, hps.max_doc_len, 1])  # [B,N,L,TD+F]
         query_tiled_rsp = tf.reshape(query_tiled, [
             -1, hps.max_doc_len, hps.type_emb_dim + hps.word_conv_filter
-        ])  #[B*N, L, TD+F]
+        ])  # [B*N, L, TD+F]
 
         hop_net_rnn_input = tf.concat([emb_docs_rsp, query_tiled_rsp],
-                                      2)  #[B*N, L, D+TD+F]
+                                      2)  # [B*N, L, D+TD+F]
 
         # Run the RNN
         hop_net_rnn_output, _ = lib.cudnn_rnn_wrapper(
@@ -310,7 +313,12 @@ class HierHopNet(object):
         hop_net_doc_t = tf.transpose(hop_net_doc_linear, [1, 2,
                                                           0])  # [B*N, F, L]
         hop_net_att_logit = tf.matmul(docs_conv, hop_net_doc_t)  # [B*N, L, L]
-        hop_net_att_softmax = tf.nn.softmax(hop_net_att_logit)  # [B*N, L, L]
+        column_masks = tf.transpose(word_masks, [0, 2, 1])  # [B*N, 1, L]
+        row_masks = word_masks  # [B*N, L, 1]
+
+        hop_net_att_softmax = lib.masked_softmax(
+            hop_net_att_logit, column_masks, axis=-1)  # [B*N, L, L]
+        hop_net_att_softmax *= row_masks  # [B*N, L, L]
 
       # Apply hierarchical attention over the documents
       with tf.variable_scope("hier_att",
@@ -322,27 +330,36 @@ class HierHopNet(object):
             -1, hps.max_num_doc, hps.max_doc_len, hps.max_doc_len
         ])  # [B, N, L, L]
         hop_att_weight = tf.squeeze(
-            tf.matmul(select_att_rsp, hop_net_att_rsp), 2)  # [B, N, L]
+            tf.matmul(select_att_rsp, hop_net_att_rsp), 2)  # [B, N, L], masked
 
         # Compute the weighted document representation
         hop_att_weight_rsp = tf.reshape(hop_att_weight,
                                         [-1, hps.max_doc_len, 1])  # [B*N, L, 1]
-        weighted_docs = docs_conv * hop_att_weight_rsp  # [B*N, L, F]
-        sum_docs = tf.reshape(
-            tf.reduce_sum(weighted_docs, 1),
-            [-1, hps.max_num_doc, hps.word_conv_filter])  # [B, N, F]
+        weighted_docs = docs_conv * hop_att_weight_rsp  # [B*N, L, F], masked
+        sum_docs = tf.reduce_sum(weighted_docs, 1)  # [B*N, F], masked
+        sum_docs_rsp = tf.reshape(sum_docs,
+                                  [-1, hps.max_num_doc,
+                                   hps.word_conv_filter])  # [B, N, F], masked
 
         # Weight the doc representation with document-level attention
-        doc_att_weight = tf.nn.softmax(tf.reduce_sum(select_att_logit,
-                                                     2))  # [B, N]
+        doc_att_logit = tf.reduce_sum(select_att_logit * select_att_masks,
+                                      2)  # [B, N]
+        doc_att_mask = tf.sequence_mask(
+            self._num_docs, maxlen=hps.max_num_doc, dtype=tf.float32)  # [B, N]
+        doc_att_weight = lib.masked_softmax(doc_att_logit,
+                                            doc_att_mask)  # [B, N], masked
         doc_att_weight_rsp = tf.expand_dims(doc_att_weight, 2)  # [B, N, 1]
-        final_output = tf.reduce_sum(sum_docs * doc_att_weight_rsp, 1)  # [B, F]
+        final_output = tf.reduce_sum(sum_docs_rsp * doc_att_weight_rsp,
+                                     1)  # [B, F], masked
 
       with tf.variable_scope("prob_output"), tf.device(self._device_0):
         # Compute the probability of each candidate by inner product
         cand_prob_logits = tf.matmul(mean_cands, tf.expand_dims(
             final_output, 2))  # [B, C, 1]
-        self._cand_prob_logits = tf.squeeze(cand_prob_logits, 2)  # [B, C]
+        cand_prob_masks = tf.sequence_mask(
+            self._num_cand, maxlen=hps.max_num_cands, dtype=tf.float32)
+        self._cand_prob_logits = tf.squeeze(cand_prob_logits,
+                                            2) * cand_prob_masks  # [B, C]
 
   def _add_loss(self):
     hps = self._hps

@@ -49,7 +49,7 @@ tf.app.flags.DEFINE_bool("truncate_input", True,
                          "examples that are too long are discarded.")
 # ----------- general flags ----------------
 tf.app.flags.DEFINE_integer("num_gpus", 1, "Number of gpus used.")
-# ----------- model related flags ----------------
+# ----------- HHN related flags ----------------
 tf.app.flags.DEFINE_integer("emb_dim", 128, "Dim of word embedding.")
 tf.app.flags.DEFINE_integer("type_emb_dim", 128, "Dim of type embedding.")
 tf.app.flags.DEFINE_integer("max_num_doc", 64, "Maximum number of documents.")
@@ -64,6 +64,11 @@ tf.app.flags.DEFINE_integer("word_conv_width", 3, "Width of CNN kernel.")
 tf.app.flags.DEFINE_integer("hop_net_rnn_layers", 1, "Number of layer of RNN.")
 tf.app.flags.DEFINE_integer("hop_net_rnn_num_hid", 128,
                             "Number of hidden units of RNN.")
+# ----------- Multi-HHN related flags ----------------
+tf.app.flags.DEFINE_integer("num_hops", 3, "Number of hops units of RNN.")
+tf.app.flags.DEFINE_bool("hop_mod_reuse", True,
+                         "Whether reuse hop module parameters")
+tf.app.flags.DEFINE_string("pretrain_dir", "", "Directory of pretrained model.")
 
 
 def main():
@@ -75,6 +80,9 @@ def main():
   if model_type == "hhn":
     from models.hhn import CreateHParams
     from models.hhn import HierHopNet as Model
+  elif model_type == "multi_hhn":
+    from models.multi_hhn import CreateHParams
+    from models.multi_hhn import MultiHierHopNet as Model
   else:
     raise ValueError("%s model NOT defined." % model_type)
   tf.logging.info("Using model %s." % model_type.upper())
@@ -99,7 +107,7 @@ def main():
     batch_reader.GET_TIMEOUT = 60
 
   # Create data reader
-  if model_type == "hhn":
+  if model_type in ["hhn", "multi_hhn"]:
     batcher = batch_reader.QAngarooBatcher(
         FLAGS.data_path,
         input_vocab,
@@ -120,7 +128,6 @@ def main():
           truncate_input=FLAGS.truncate_input,
           num_epochs=num_epochs,
           shuffle_batches=shuffle_batches)
-
   else:
     raise NotImplementedError()
 
